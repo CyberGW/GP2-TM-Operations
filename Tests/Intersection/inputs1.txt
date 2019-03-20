@@ -1,0 +1,15 @@
+_
+_a
+_b
+_c
+_aa
+_ab
+_ac
+_ba
+_bb
+_bc
+_ca
+_cb
+_cc
+_bbc
+_bcc

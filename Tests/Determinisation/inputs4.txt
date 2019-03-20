@@ -1,0 +1,17 @@
+_
+_a
+_b
+_c
+_aa
+_bb
+_ab
+_ba
+_ca
+_cb
+_ac
+_bc
+_aac
+_bbc
+_abc
+_bac
+_abababc

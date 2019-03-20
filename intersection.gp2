@@ -1,0 +1,582 @@
+Main = Setup ; DFS_1 ; DFS_2 ; Prune ; create_extra_states ; Add_Edges ; Clean_Up
+
+Setup =  uncolour_final_states! ; uncolour! ; make_grey! ; create_symbol_node ; create_alph_node
+Prune = del_symbol_node ; remove_blank ; uncolour! ; colour_final_state!
+
+DFS_1 = init; (Perform_DFS_1! ; try back else end)!
+Perform_DFS_1 = DFS_1_Operations! ; {unmark_edges , unmark_loops}! ; forward
+DFS_1_Operations = {choose_edge, choose_loop} ; Extract_Alph ; Add_Tape_2_Rules ; {mark_edge, mark_loop}
+DFS_2 = init; (Perform_DFS_2! ; try back else end)!
+Perform_DFS_2 = DFS_2_Operations! ; {unmark_edges, unmark_loops}! ; forward
+DFS_2_Operations = {choose_edge, choose_loop} ; Extract_Alph ; Add_Tape_1_Rules ; {mark_edge, mark_loop}
+
+Extract_Alph = {get_symbol, get_symbol_loop} ; if symbol_seen then del_symbol else update_alph
+Add_Tape_2_Rules = {add_tape_2_rule, add_tape_2_rule_loop}
+Add_Tape_1_Rules = {add_tape_1_rule, add_tape_1_rule_loop}
+
+Add_Edges = add_copy_loops!;wind_back_t1!;wind_back_t2!;make_blank!
+Clean_Up = del_alph_edges!;del_alph_node
+
+//AVERAGE OF 1,000 EXECUTIONS WITH 100 NODES = 0.01685s
+
+//FOLD === CREATE EXTRA STATES
+//make all of the extra states needed to control execution and connect them to the existing machines as required
+create_extra_states(a,b,c,d,e,f,g : list)
+[
+ (n1, a)
+ (n2, b)
+ (n3, c #green)
+ (n4, d) 
+|
+ (e1, n1, n1, e #dashed)
+ (e2, n2, n2, f #dashed)
+ (e3, n4, n3, g)
+]
+=>
+[
+ (n1, a)
+ (n2, b)
+ (n3, "del")
+ (n4, d)
+ (n5, "copy")
+ (n6, "wb1")
+ (n7, "wb2")
+ (n8, "initial")
+|
+ (e1, n8, n8, empty #dashed)
+ (e2, n4, n3, g)
+ (e3, n5, n6, "_":"_":"L":"_":"_":"S")
+ (e5, n6, n7, "_":"_":"S":"_":"_":"L")
+ (e6, n7, n1, "_":"_":"S":"_":"_":"S")
+ (e7, n3, n2, "_":"_":"S":"_":"_":"S")
+ (e8, n8, n5, "_":"_":"R":"_":"_":"R")
+]
+interface = { n1, n2, n3, n4 }
+//END_FOLD
+
+//FOLD === ADD_EDGES ===
+//add the edges to the copy state to copy any alphabet symbol from tape 1 to tape 2
+add_copy_loops(x : atom)
+[
+ (n1, "copy")
+ (n2(R), "alph")
+|
+ (e1, n2, n2, x)
+]
+=>
+[
+ (n1, "copy")
+ (n2(R), "alph")
+|
+ (e1, n2, n2, x #red)
+ (e2, n1, n1, x:x:"R":"_":x:"R")
+]
+interface = { n1, n2 }
+
+//add the edges to the wind back 1 state to wind the tape head of tape 1 back to the start of the input
+wind_back_t1(x : atom)
+[
+ (n1(R), "alph")
+ (n2, "wb1")
+|
+ (e1, n1, n1, x #red)
+]
+=>
+[
+ (n1(R), "alph")
+ (n2, "wb1")
+|
+ (e1, n1, n1, x #blue)
+ (e2, n2, n2, x:x:"L":"_":"_":"S")
+]
+interface = { n1, n2 }
+
+//add the edges to the wind back 2 state to wind the tape head of tape 2 back to the start of the input
+wind_back_t2(x : atom)
+[
+ (n1, "wb2")
+ (n2(R), "alph")
+|
+ (e1, n2, n2, x #blue)
+]
+=>
+[
+ (n1, "wb2")
+ (n2(R), "alph")
+|
+ (e1, n2, n2, x #red)
+ (e2, n1, n1, "_":"_":"S":x:x:"L")
+]
+interface = { n1, n2 }
+
+//add the edges to the delete state so that any symbol on tape 1 is replaced with a blank symbol
+make_blank(x, y : atom; z : list)
+[
+ (n1, "del")
+ (n2, y)
+ (n3(R), "alph")
+|
+ (e1, n3, n3, x #red)
+ (e2, n1, n2, z)
+]
+=>
+[
+ (n1, "del")
+ (n2, y)
+ (n3(R), "alph")
+|
+ (e1, n3, n3, x #blue)
+ (e2, n1, n2, z)
+ (e3, n1, n2, x:"_":"S":"_":"_":"S")
+]
+interface = { n1, n2, n3 }
+//END_FOLD
+
+//FOLD === DEPTH-FIRST SEARCH ===
+//find an initial state and make it a rooted red node to start the depth-first search from
+init(x : atom)
+[
+ (n1, x #grey)
+|
+ (e1, n1, n1, empty #dashed)
+]
+=>
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, empty #dashed)
+]
+interface = { n1 }
+
+//move forward to a node connected to the current node and mark the edge chosen as dashed
+forward(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #grey)
+|
+ (e1, n1, n2, c)
+]
+=>
+[
+ (n1, a #red)
+ (n2(R), b #red)
+|
+ (e1, n1, n2, c #dashed)
+]
+interface = { n1, n2 }
+
+//go back along a dashed edge to an already visited node
+back(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #red)
+|
+ (e1, n2, n1, c #dashed)
+]
+=>
+[
+ (n1, a)
+ (n2(R), b #red)
+|
+ (e1, n2, n1, c)
+]
+interface = { n1, n2 }
+
+//remove the markings from the node we started on
+end(x : atom)
+[
+ (n1(R), x #red)
+|
+]
+=>
+[
+ (n1, x)
+|
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === EXTRACT ALPHABET & MAKE MULTITAPE ===
+//create a node to encode the currently read symbol
+create_symbol_node()
+[
+|
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+|
+]
+interface = {}
+
+//create a node to encode all symbols in the tape alphabets
+create_alph_node()
+[
+|
+]
+=>
+[
+ (n1(R), "alph" #blue)
+|
+]
+interface = {}
+
+//choose an edge from our current node to a new node and mark as blue
+choose_edge(a,b : atom ; c : list) 
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+interface = { n1, n2 }
+
+//choose a looping edge from our current node and mark the edge as blue
+choose_loop(a,b,c : atom ; cn : list) 
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c:cn)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c:cn #blue)
+]
+interface = { n1 }
+
+//extract the symbol read on the marked edge transition and encode on the symbol node
+get_symbol(a,b,c : atom ; cn : list) 
+[
+ (n1(R), a #red)
+ (n2, b #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, c:cn #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, c:cn #blue)
+ (e2, n3, n3, c)
+]
+interface = { n1, n2, n3 }
+
+//extract the symbol read on the marked looping transition and encode on the symbol node
+get_symbol_loop(a,b : atom ; bn : list)
+[
+ (n1(R), a #red)
+ (n2(R), "symbol" #blue)
+|
+ (e1, n1, n1, b:bn #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2(R), "symbol" #blue)
+|
+ (e1, n1, n1, b:bn #blue)
+ (e2, n2, n2, b)
+]
+interface = { n1, n2 }
+
+//add the transition rules for tape 2 on a state transitioning edge
+add_tape_2_rule(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c : "_":"_":"S" #blue)
+]
+interface = { n1, n2 }
+
+//add the transition rules for tape 2 on a looping edge
+add_tape_2_rule_loop(a : atom ; c : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c : "_":"_":"S" #blue)
+]
+interface = { n1 }
+
+//add the transition rules for tape 1 on a state transitioning edge
+add_tape_1_rule(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, "_":"_":"S" : c #blue)
+]
+interface = { n1, n2 }
+
+//add the transition rules for tape 1 on a looping edge
+add_tape_1_rule_loop(a : atom ; c : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, "_":"_":"S" : c #blue)
+]
+interface = { n1 }
+
+//predicate rule - check to see if the currently read symbol is already encoded into the alphabet or not
+symbol_seen(a : atom)
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a)
+]
+interface = { n1, n2 }
+
+//make the currently marked edge red so it won't be considered again
+mark_edge(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #red)
+]
+interface = { n1, n2 }
+
+//make the currently marked looping edge red so it won't be considered again
+mark_loop(a : atom ; b : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, b #blue)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, b #red)
+]
+interface = { n1 }
+
+//add the currently read symbol to the alphabet
+update_alph(a : atom)
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e2, n2, n2, a)
+]
+interface = { n1, n2 }
+
+//delete the symbol that the symbol node is currently representing
+del_symbol(a : atom)
+[
+ (n1(R), "symbol" #blue)
+|
+ (e1, n1, n1, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+|
+]
+interface = { n1 }
+
+//unmark all edges from our current node to another node
+unmark_edges(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #red)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c)
+]
+interface = { n1, n2 }
+
+//uncolour all looping edges from the current node
+unmark_loops(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c #red)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c)
+]
+interface = { n1 }
+
+//delete the symbol node
+del_symbol_node()
+[
+ (n1(R), "symbol" #blue)
+|
+]
+=>
+[
+|
+]
+interface = {}
+
+//remove the blank symbol from the alphabet encoding
+remove_blank()
+[
+ (n1(R), "alph" #blue)
+|
+ (e1, n1, n1, "_")
+]
+=>
+[
+ (n1(R), "alph" #blue)
+|
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === FORMAT ===
+//remove any colours from all nodes
+uncolour(x : atom)
+[
+ (n1, x #any)
+|
+]
+=>
+[
+ (n1, x)
+|
+]
+interface = { n1 }
+
+//uncolour final states, but mark with a green looping edge
+uncolour_final_states(x : atom)
+[
+ (n1, x #green)
+|
+]
+=>
+[
+ (n1, x)
+|
+ (e1, n1, n1, empty #green)
+]
+interface = { n1 }
+
+//make all nodes in the graph grey
+make_grey(x : atom)
+[
+ (n1, x)
+|
+]
+=>
+[
+ (n1, x #grey)
+|
+]
+interface = { n1 }
+
+//find the final state, remove the identifying loop and make green again
+colour_final_state(x : atom)
+[
+ (n1, x)
+|
+ (e1, n1, n1, empty #green)
+]
+=>
+[
+ (n1, x #green)
+|
+]
+interface = { n1 }
+
+//END_FOLD
+
+//FOLD === CLEAN-UP ===
+//delete all edges looping on the alphabet node
+del_alph_edges(x : atom)
+[
+ (n1(R), "alph")
+|
+ (e1, n1, n1, x #any)
+]
+=>
+[
+ (n1(R), "alph")
+|
+]
+interface = { n1 }
+
+//remove the alphabet node
+del_alph_node()
+[
+ (n1(R), "alph")
+|
+]
+=>
+[
+ |
+]
+interface = {}
+//END_FOLD

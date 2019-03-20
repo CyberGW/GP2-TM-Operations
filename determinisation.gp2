@@ -1,0 +1,1470 @@
+Main = Setup ; DFS_1 ; dfs_reset! ; DFS_2 ; uncolour! ; colour_final_state ; Build_Interpreter ; Clean_Up
+
+Setup = uncolour_final_states ; make_grey! ; create_symbol_node ; create_alph_node ; add_blank ; label_transition_init ; initialise_b ; create_hr
+
+DFS_1 = init ; (Perform_DFS! ; try back else end)!
+Perform_DFS = forward ; DFS_Operations! ; {unmark_edges , unmark_loops}! ; Perform_Labelling!
+DFS_Operations = {choose_edge, choose_loop} ; Extract_Alph ; {mark_edge, mark_loop}
+Extract_Alph = {get_symbol, get_symbol_loop} ; if symbol_seen then del_symbol else update_alph
+
+DFS_2 = init ; (Perform_DFS_2! ; try back else end)!
+Perform_DFS_2 = if pred_initial_state then (Add_Tape_3 ; Add_Tape_1!) ; forward ; DFS_Operations_2
+DFS_Operations_2 = if pred_accepting_state then skip else (Add_Extra_Traces ; unmark_alph! ; (move_hash ; move_hash_on_trace! ; unmark_b!) ; Make_Complete) ; Add_Tape_3! ; Add_Tape_1!
+Add_Extra_Traces = ( {find_ntm_i_init, find_ntm_loop_i_init} ; {find_ntm_i, find_ntm_loop_i}! ; add_larger_trace! ; unmark_b! ; del_symbol )!
+Make_Complete = (mark_existing_edges ; try mark_alph ; del_symbol)! ; add_edge! ; unmark_alph! ; unmark_edges!
+
+Perform_Labelling = Find_Transition;Update_B;({label_new_state_transitions, label_loop_transitions} ; Update_B)!;label_transition_reset
+Update_B = if b_exists then skip else update_b
+Find_Transition = try {find_transition_1, find_transition_2, find_transition_3, find_transition_4}
+
+Add_Tape_3 = {t3_find_transition_1, t3_find_transition_2} ; {add_t3_transitions_1, add_t3_transitions_2}! ; unmark_b! ; {delete_original_1 , delete_original_2}
+Add_Tape_1 = {add_t1_transitions_1, add_t1_transitions_2}
+
+Build_Interpreter = remove_blank ; create_extra_states;Add_Edges;create_extra_states_end;Wind_Forward_T3;Erase_T2
+Add_Edges = add_copy_loops!;Windback_Edges;Inc_Trace
+Windback_Edges = wind_back_t1!;wind_back_t2!;wind_back_t2_hash;wind_back_t3!
+Inc_Trace = increase_trace!;increase_trace_max;add_trace_digit!
+Wind_Forward_T3 = wind_forward_t3!
+Erase_T2 = wind_t2_end!;wind_t2_start!;wind_t2_start_on_blank
+
+Clean_Up = del_alph_edges! ; del_b_edges! ; del_max ; del_alph_b_nodes ; unroot_hr
+
+//AVERAGE OF 1,000 EXECUTIONS WITH 100 NODES, 200 EDGES = 0.04388s
+
+//FOLD === DEPTH-FIRST SEARCH ===
+//find the initial state and make it a rooted red node to start the depth-first search from
+init(x : atom)
+[
+ (n1, x #grey)
+|
+ (e1, n1, n1, empty #dashed)
+]
+=>
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, empty #dashed)
+]
+interface = { n1 }
+
+//move forward to a node connected to the current node and mark the edge chosen as dashed
+forward(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #grey)
+|
+ (e1, n1, n2, c)
+]
+=>
+[
+ (n1, a #red)
+ (n2(R), b #red)
+|
+ (e1, n1, n2, c #dashed)
+]
+interface = { n1, n2 }
+
+//go back along a dashed edge to an already visited node
+back(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #red)
+|
+ (e1, n2, n1, c #dashed)
+]
+=>
+[
+ (n1, a #green)
+ (n2(R), b #red)
+|
+ (e1, n2, n1, c)
+]
+interface = { n1, n2 }
+
+//remove the markings from the node we started on
+end(x : atom)
+[
+ (n1(R), x #red)
+|
+]
+=>
+[
+ (n1, x #green)
+|
+]
+interface = { n1 }
+
+//make all completed green nodes grey again so we can perform another DFS
+dfs_reset(x : atom)
+[
+ (n1, x #green)
+|
+]
+=>
+[
+ (n1, x #grey)
+|
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === EXTRACT ALPHABET ===
+//create a node to encode the currently read symbol
+create_symbol_node()
+[
+|
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+|
+]
+interface = {}
+
+//create a node to encode all symbols in the tape alphabets
+create_alph_node()
+[
+|
+]
+=>
+[
+ (n1(R), "alph" #blue)
+|
+]
+interface = {}
+
+//choose an edge from our current node to a new node and mark as blue
+choose_edge(a,b : atom ; c : list) 
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+interface = { n1, n2 }
+
+//choose a looping edge from our current node and mark the edge as blue
+choose_loop(a,b,c : atom ; cn : list) 
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c:cn)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c:cn #blue)
+]
+interface = { n1 }
+
+//extract the symbol read on the marked edge transition and encode on the symbol node
+get_symbol(a,b,c : atom ; cn : list) 
+[
+ (n1(R), a #red)
+ (n2, b #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, c:cn #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, c:cn #blue)
+ (e2, n3, n3, c)
+]
+interface = { n1, n2, n3 }
+
+//extract the symbol read on the marked looping transition and encode on the symbol node
+get_symbol_loop(a,b : atom ; bn : list)
+[
+ (n1(R), a #red)
+ (n2(R), "symbol" #blue)
+|
+ (e1, n1, n1, b:bn #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2(R), "symbol" #blue)
+|
+ (e1, n1, n1, b:bn #blue)
+ (e2, n2, n2, b)
+]
+interface = { n1, n2 }
+
+//predicate rule - check to see if the currently read symbol is already encoded into the alphabet or not
+symbol_seen(a : atom)
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a)
+]
+interface = { n1, n2 }
+
+//make the currently marked edge red so it won't be considered again
+mark_edge(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #blue)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #red)
+]
+interface = { n1, n2 }
+
+//make the currently marked looping edge red so it won't be considered again
+mark_loop(a : atom ; b : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, b #blue)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, b #red)
+]
+interface = { n1 }
+
+//add the currently read symbol to the alphabet
+update_alph(a : atom)
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e2, n2, n2, a)
+]
+interface = { n1, n2 }
+
+//delete the symbol that the symbol node is currently representing
+del_symbol(a : atom)
+[
+ (n1(R), "symbol" #blue)
+|
+ (e1, n1, n1, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+|
+]
+interface = { n1 }
+
+//unmark all edges from our current node to another node
+unmark_edges(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c #red)
+]
+=>
+[
+ (n1(R), a #red)
+ (n2, b #any)
+|
+ (e1, n1, n2, c)
+]
+interface = { n1, n2 }
+
+//uncolour all looping edges from the current node
+unmark_loops(a,b : atom ; c : list)
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c #red)
+]
+=>
+[
+ (n1(R), a #red)
+|
+ (e1, n1, n1, c)
+]
+interface = { n1 }
+
+//delete the symbol node
+del_symbol_node()
+[
+ (n1(R), "symbol" #blue)
+|
+]
+=>
+[
+|
+]
+interface = {}
+
+//remove the blank symbol from the alphabet encoding
+remove_blank()
+[
+ (n1(R), "alph")
+|
+ (e1, n1, n1, "_")
+]
+=>
+[
+ (n1(R), "alph")
+|
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === LABEL_NTM_TRANSITIONS ===
+//create the variable nodes we need before labelling transitions
+label_transition_init()
+[
+|
+]
+=>
+[
+ (n1(R), "count" #blue)
+ (n2(R), "b" #blue)
+ (n3(R), "max" #blue)
+|
+]
+interface = {}
+
+//initalise our branching factor and maximum branching factor nodes to store 1
+initialise_b()
+[
+ (n1(R), "b" #blue)
+ (n2(R), "max" #blue)
+|
+]
+=>
+[
+ (n1(R), "b" #blue)
+ (n2(R), "max" #blue)
+|
+ (e1, n1, n1, 1)
+ (e2, n2, n2, 1)
+]
+interface = { n1, n2 }
+
+//find a non-deterministic choice to two new distinct states and mark them with 1 and 2 traces, whilst setting count to 2
+find_transition_1(x,y,z,ai : atom ; an, bn : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3, z #any)
+ (n4(R), "count" #blue)
+ (n5(R), "symbol" #blue)
+ (n6(R), "hr" #blue)
+|
+ (e1, n1, n2, ai:an)
+ (e2, n1, n3, ai:bn)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3, z #any)
+ (n4(R), "count" #blue)
+ (n5(R), "symbol" #blue)
+ (n6(R), "hr" #blue)
+|
+ (e1, n1, n2, ai:an:1:1:"R")
+ (e2, n1, n3, ai:bn:2:2:"R")
+ (e3, n1, n6, ai:"_":"S":"_":"_":"S")
+ (e3, n4, n4, 2)
+ (e4, n5, n5, ai)
+]
+interface = { n1, n2, n3, n4, n5, n6 }
+where length(an) = 2 and length(bn) = 2
+
+//find a non-deterministic choice to the same new state, and mark them with 1 and 2 traces, whilst setting count to 2
+find_transition_2(x,y,ai : atom ; an, bn : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "hr" #blue)
+|
+ (e1, n1, n2, ai:an)
+ (e2, n1, n2, ai:bn)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "hr" #blue)
+|
+ (e1, n1, n2, ai:an:1:1:"R")
+ (e2, n1, n2, ai:bn:2:2:"R")
+ (e3, n1, n5, ai:"_":"S":"_":"_":"S")
+ (e4, n3, n3, 2)
+ (e5, n4, n4, ai)
+]
+interface = { n1, n2, n3, n4, n5 }
+where length(an) = 2 and length(bn) = 2
+
+//find a non-deterministic choice one to a new state and one looping, and mark them with 1 and 2 traces, whilst setting count to 2
+find_transition_3(x,y,ai : atom ; an, bn : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "hr" #blue)
+|
+ (e1, n1, n1, ai:an)
+ (e2, n1, n2, ai:bn)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "hr" #blue)
+|
+ (e1, n1, n1, ai:an:1:1:"R")
+ (e2, n1, n2, ai:bn:2:2:"R")
+ (e3, n1, n5, ai:"_":"S":"_":"_":"S")
+ (e4, n3, n3, 2)
+ (e5, n4, n4, ai)
+]
+interface = { n1, n2, n3, n4, n5 }
+where length(an) = 2 and length(bn) = 2
+
+//find a non-deterministic choice both looping to the same state, and mark them with 1 and 2 traces, whilst setting count to 2
+find_transition_4(x,ai : atom ; an, bn : list)
+[
+ (n1(R), x #red)
+ (n2(R), "count" #blue)
+ (n3(R), "symbol" #blue)
+ (n4(R), "hr" #blue)
+|
+ (e1, n1, n1, ai:an)
+ (e2, n1, n1, ai:bn)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2(R), "count" #blue)
+ (n3(R), "symbol" #blue)
+ (n4(R), "hr" #blue)
+|
+ (e1, n1, n1, ai:an:1:1:"R")
+ (e2, n1, n1, ai:bn:2:2:"R")
+ (e3, n1, n4, ai:"_":"S":"_":"_":"S")
+ (e4, n2, n2, 2)
+ (e5, n3, n3, ai)
+]
+interface = { n1, n2, n3, n4 }
+where length(an) = 2 and length(bn) = 2
+
+//continue to label any other transitions of the same character to a new state, whilst increasing count
+label_new_state_transitions(x,y,a : atom ; i : int ; an : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n3, n3, i)
+ (e2, n4, n4, a)
+ (e1, n1, n2, a:an)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "count" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n3, n3, i+1)
+ (e2, n4, n4, a)
+ (e3, n1, n2, a:an:i+1:i+1:"R")
+]
+interface = { n1, n2, n3, n4 }
+where length(an) = 2
+
+//continue to label any other  looping transitions of the same character, whilst increasing count
+label_loop_transitions(x,a : atom ; i : int ; an : list)
+[
+ (n1(R), x #red)
+ (n2(R), "count" #blue)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n2, n2, i)
+ (e2, n3, n3, a)
+ (e3, n1, n1, a:an)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2(R), "count" #blue)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n2, n2, i+1)
+ (e2, n3, n3, a)
+ (e3, n1, n1, a:an:i+1:i+1:"R")
+]
+interface = { n1, n2, n3 }
+where length(an) = 2
+
+//check if the our b node has already counted this branching factor or not
+b_exists(i,j : int)
+[
+ (n1(R), "b" #blue)
+ (n2(R), "count" #blue)
+|
+ (e1, n1, n1, i)
+ (e2, n2, n2, i)
+]
+=>
+[
+ (n1(R), "b" #blue)
+ (n2(R), "count" #blue)
+|
+]
+interface = { n1, n2 }
+
+//update b and max with the newly found greater branching factor
+update_b(i,j : int)
+[
+ (n1(R), "b" #blue)
+ (n2(R), "count" #blue)
+ (n3(R), "max" #blue)
+|
+ (e1, n2, n2, i)
+ (e2, n3, n3, j)
+]
+=>
+[
+ (n1(R), "b" #blue)
+ (n2(R), "count" #blue)
+ (n3(R), "max" #blue)
+|
+ (e1, n2, n2, i)
+ (e2, n3, n3, i)
+ (e3, n1, n1, i)
+]
+interface = { n1, n2, n3 }
+
+//delete the labels on count and symbol nodes
+label_transition_reset(a : atom ; i : int)
+[
+ (n1(R), "count" #blue)
+ (n2(R), "symbol" #blue)
+|
+ (e1, n1, n1, i)
+ (e2, n2, n2, a)
+]
+=>
+[
+ (n1(R), "count" #blue)
+ (n2(R), "symbol" #blue)
+|
+]
+interface = { n1, n2 }
+
+//delete the count and symbol nodes
+label_transition_cleanup(a : atom ; i : int)
+[
+ (n1(R), "count" #blue)
+ (n2(R), "symbol" #blue)
+|
+]
+=>
+[
+|
+]
+interface = {}
+//END_FOLD
+
+//FOLD === ADD LARGER TRACE TRANSITIONS ===
+//start by finding the first labelled non-deterministic transition to a new state and store the symbol read on the symbol node
+find_ntm_i_init(x,y,a,b,c,d : atom ; i:int)
+[
+ (n1(R), x #any)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "alph" #blue)
+|
+ (e1, n1, n2, a:b:c:i:i:"R")
+ (e2, n3, n3, i)
+ (e3, n5, n5, d)
+]
+=>
+[
+ (n1(R), x #any)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+ (n4(R), "symbol" #blue)
+ (n5(R), "alph" #blue)
+|
+ (e1, n1, n2, a:b:c:i:i:"R")
+ (e2, n3, n3, i #red)
+ (e3, n5, n5, d #red)
+ (e4, n4, n4, a)
+]
+interface = { n1, n2, n3, n4, n5 }
+
+//find any more transitions to a new state and mark the trace digit used on the branching factor node
+find_ntm_i(x,y,a,b,c : atom ; i:int)
+[
+ (n1(R), x #any)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n1, n2, a:b:c:i:i:"R")
+ (e2, n3, n3, i)
+ (e3, n4, n4, a)
+]
+=>
+[
+ (n1(R), x #any)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n1, n2, a:b:c:i:i:"R")
+ (e2, n3, n3, i #red)
+ (e3, n4, n4, a)
+]
+interface = { n1, n2, n3, n4 }
+
+//start by finding the first labelled non-deterministic looping transition and store the symbol read on the symbol node
+find_ntm_loop_i_init(x,a,b,c : atom ; i:int)
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "symbol" #blue)
+ (n4(R), "alph" #blue)
+|
+ (e1, n1, n1, a:b:c:i:i:"R")
+ (e2, n2, n2, i)
+ (e3, n4, n4, a)
+]
+=>
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "symbol" #blue)
+ (n4(R), "alph" #blue)
+|
+ (e1, n1, n1, a:b:c:i:i:"R")
+ (e2, n2, n2, i #red)
+ (e3, n4, n4, a #red)
+ (e4, n3, n3, a)
+]
+interface = { n1, n2, n3, n4 }
+
+//find any more looping transitions and mark the trace digit used on the branching factor node
+find_ntm_loop_i(x,a,b,c : atom ; i:int)
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n1, a:b:c:i:i:"R")
+ (e2, n2, n2, i)
+ (e3, n3, n3, a)
+]
+=>
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n1, a:b:c:i:i:"R")
+ (e2, n2, n2, i #red)
+ (e3, n3, n3, a)
+]
+interface = { n1, n2, n3 }
+
+//for the current symbol, add transitions for any branching factor traces not already used to send to the hr state
+add_larger_trace(x,a : atom ; i : int)
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "hr" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n2, n2, i)
+ (e2, n4, n4, a)
+]
+=>
+[
+ (n1(R), x #any)
+ (n2(R), "b" #blue)
+ (n3(R), "hr" #blue)
+ (n4(R), "symbol" #blue)
+|
+ (e1, n2, n2, i #red)
+ (e2, n4, n4, a)
+ (e3, n1, n3, "_":"_":"S" : "a":"_":"S" : i:i:"S")
+]
+interface = { n1, n2, n3, n4 }
+//END_FOLD
+
+//FOLD === MAKE COMPLETE ===
+//mark an existing transition red and encode the symbol it read in the symbol node
+mark_existing_edges(a,x : atom ; i : int ; y,an: list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, a:an)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "symbol" #blue)
+|
+ (e1, n1, n2, a:an #red)
+ (e2, n3, n3, a)
+]
+interface = { n1, n2, n3 }
+where y != "hr"
+
+//mark all seen alphabet symbols that our encoded in the symbol node
+mark_alph(a : atom)
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a)
+]
+=>
+[
+ (n1(R), "symbol" #blue)
+ (n2(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+ (e2, n2, n2, a #red)
+]
+interface = { n1, n2 }
+
+//add a new edge to the hr state for any symbol encoded in alphabet that's not marked, and hence has no defined transition for the current state
+add_edge(x : atom ; a : atom)
+[
+ (n1(R), x #red)
+ (n2(R), "hr" #blue)
+ (n3(R), "alph" #blue)
+|
+ (e1, n3, n3, a)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2(R), "hr" #blue)
+ (n3(R), "alph" #blue)
+|
+ (e1, n3, n3, a #red)
+ (e2, n1, n2, a:"_":"S")
+]
+interface = { n1, n2, n3 }
+
+//add the blank symbol to the alphabet
+add_blank(x : atom)
+[
+ (n1(R), "alph" #blue)
+|
+]
+=>
+[
+ (n1(R), "alph" #blue)
+|
+ (e1, n1, n1, "_")
+]
+interface = { n1 }
+
+//check if the current state is an accepting state or not
+pred_accepting_state(x : atom)
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, empty #green)
+]
+=>
+[
+ (n1(R), x #red)
+|
+]
+interface = { n1 }
+
+//check if the current state is an initial state or not
+pred_initial_state(x : atom)
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, empty #dashed)
+]
+=>
+[
+ (n1(R), x #red)
+|
+]
+interface = { n1 }
+
+//uncolour all alph edges
+unmark_alph(a : atom)
+[
+ (n1(R), "alph" #blue)
+|
+ (e1, n1, n1, a #red)
+]
+=>
+[
+ (n1(R), "alph" #blue)
+|
+ (e1, n1, n1, a)
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === MOVE # ===
+//make a new state and new transitions to move the # symbol one space to the right
+move_hash(x : atom)
+[
+ (n1(R), x #red)
+|
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, "")
+|
+ (e1, n1, n2, "_":"_":"S" : "#":"_":"R" : "_":"_":"S")
+ (e2, n2, n1, "_":"_":"S" : "_":"#":"L" : "_":"_":"S")
+]
+interface = { n1 }
+
+//add extra transitions so that the # symbol can be moved given any trace digit on tape 3
+move_hash_on_trace(x : atom ; y : list ; i : int)
+[
+ (n1(R), x #red)
+ (n2, "")
+ (n3(R), "b" #blue)
+|
+ (e1, n1, n2, y)
+ (e1, n3, n3, i)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, "")
+ (n3(R), "b" #blue)
+|
+ (e1, n1, n2, y)
+ (e2, n3, n3, i #red)
+ (e3, n1, n2, "_":"_":"S" : "#":"_":"R" : i:i:"S")
+ (e4, n2, n1, "_":"_":"S" : "_":"#":"L" : i:i:"S")
+]
+interface = { n1, n2, n3 }
+//END_FOLD
+
+//FOLD === ADD EXTRA STATES ===
+//create a hr state, signifying when our current path has caused rejection
+create_hr()
+[
+|
+]
+=>
+[
+ (n1(R), "hr" #blue)
+|
+]
+interface = {}
+
+//create the extra states at the beginning of the machine to copy tape contents, wind tapes back to the start and increase our trace
+create_extra_states(x : atom)
+[
+ (n1, x)
+|
+ (e1, n1, n1, empty #dashed)
+]
+=>
+[
+ (n1, x)
+ (n2, "copy")
+ (n3, "wb1")
+ (n4, "wb2")
+ (n5, "b+1")
+ (n6, "add_digit")
+ (n7, "wb3")
+ (n8, "initial")
+ (n9, "blank")
+|
+ (e2, n8, n8, empty #dashed)
+ (e3, n8, n9, "_":"_":"S" : "_":"$":"R" : "_":0:"R") //signify that it's the first execution
+ (e4, n9, n2, "_":"_":"R" : "_":"_":"R" : "_":"_":"S")
+ (e4, n2, n3, "_":"_":"L" : "_":"#":"R" : "_":"_":"S")
+ (e5, n3, n4, "_":"_":"S" : "_":"_":"L" : "_":"_":"S")
+ (e6, n4, n5, "_":"_":"S" : "_":"_":"S" : "_":"_":"L")
+ (e7, n5, n7, "_":"_":"S" : "_":"_":"S" : 0:1:"S") //replace 0 with 1 and skip increasing mechanism
+ (e8, n5, n6, "_":"_":"S" : "_":"_":"S" : "_":"_":"R")
+ (e9, n6, n7, "_":"_":"S" : "_":"_":"S" : "_":1:"L")
+ (e10, n7, n1, "_":"_":"S" : "_":"_":"S" : "_":"_":"R") //was s:s:r
+]
+interface = { n1 }
+
+//add the loops to copy contents from tape 1 to tape 2
+add_copy_loops(x : atom)
+[
+ (n1, "copy")
+ (n2, "alph")
+|
+ (e1, n2, n2, x)
+]
+=>
+[
+ (n1, "copy")
+ (n2, "alph")
+|
+ (e1, n2, n2, x #red)
+ (e2, n1, n1, x:x:"R" : "_":x:"R" : "_":"_":"S")
+]
+interface = { n1, n2 }
+
+//add loops to wind back tape 1
+wind_back_t1(x : atom)
+[
+ (n1, "alph")
+ (n2, "wb1")
+|
+ (e1, n1, n1, x #red)
+]
+=>
+[
+ (n1, "alph")
+ (n2, "wb1")
+|
+ (e1, n1, n1, x #blue)
+ (e2, n2, n2, x:x:"L" : "_":"_":"S" : "_":"_":"S")
+]
+interface = { n1, n2 }
+
+//add loops to wind back tape 2
+wind_back_t2(x : atom)
+[
+ (n1, "wb2")
+ (n2, "alph")
+|
+ (e1, n2, n2, x #blue)
+]
+=>
+[
+ (n1, "wb2")
+ (n2, "alph")
+|
+ (e1, n2, n2, x #red)
+ (e2, n1, n1, "_":"_":"S" : x:x:"L" : "_":"_":"S")
+]
+interface = { n1, n2 }
+
+//add the extra case where a # symbol is read, as this will not be in the extracted alphabet
+wind_back_t2_hash()
+[
+ (n1, "wb2")
+|
+]
+=>
+[
+ (n1, "wb2")
+|
+ (e1, n1, n1, "_":"_":"S" : "#":"#":"L" : "_":"_":"S")
+]
+interface = { n1 }
+
+//add loops to wind back tape 3
+wind_back_t3(b : atom)
+[
+ (n1(R), "b")
+ (n2, "wb3")
+|
+ (e1, n1, n1, b)
+]
+=>
+[
+ (n1(R), "b")
+ (n2, "wb3")
+|
+ (e1, n1, n1, b #red)
+ (e2, n2, n2, "_":"_":"S" : "_":"_":"S" : b:b:"L")
+]
+interface = { n1, n2 }
+
+//add loops to increase execution trace for all choices < maximum brancing factor
+increase_trace(x,y : int)
+[
+ (n1, "b+1")
+ (n2, "wb3")
+ (n3(R), "b")
+ (n4(R), "max")
+|
+ (e1, n3, n3, x #red)
+ (e2, n4, n4, y)
+]
+=>
+[
+ (n1, "b+1")
+ (n2, "wb3")
+ (n3(R), "b")
+ (n4(R), "max")
+|
+ (e1, n3, n3, x #blue)
+ (e2, n4, n4, y)
+ (e3, n1, n2, "_":"_":"S" : "_":"_":"S" : x:x+1:"S")
+]
+interface = { n1, n2, n3 }
+where x < y
+
+//add loops to increase execution trace for all choices with maximum branching factor
+increase_trace_max(a : atom ; b : list ; x : int)
+[
+ (n1, "b+1")
+ (n2, a)
+ (n3(R), "max")
+|
+ (e1, n1, n2, b)
+ (e2, n3, n3, x)
+]
+=>
+[
+ (n1, "b+1")
+ (n2, a)
+ (n3(R), "max")
+|
+ (e1, n1, n2, b)
+ (e2, n3, n3, x)
+ (e3, n1, n1, "_":"_":"S" : "_":"_":"S" : x:1:"L")
+]
+interface = { n1, n2, n3 }
+
+//add an extra digit to the trace
+add_trace_digit(b : int)
+[
+ (n1, "add_digit")
+ (n2(R), "b")
+|
+ (e1, n2, n2, b #blue)
+]
+=>
+[
+ (n1, "add_digit")
+ (n2(R), "b")
+|
+ (e1, n2, n2, b #red)
+ (e1, n1, n1, "_":"_":"S" : "_":"_":"S" : b:b:"R")
+]
+interface = { n1, n2 }
+
+//wind forward tape 3 for all inputs < maximum branching factor, also unroot hr as it's the last time it's used
+wind_forward_t3(b : int)
+[
+ (n1(R), "hr")
+ (n2(R), "b")
+|
+ (e1, n2, n2, b #red)
+]
+=>
+[
+ (n1(R), "hr")
+ (n2(R), "b")
+|
+ (e1, n2, n2, b #blue)
+ (e2, n1, n1, "_":"_":"S" : "_":"_":"S" : b:b:"R")
+]
+interface = { n1, n2 }
+
+//create the extra states at the end of the machine
+create_extra_states_end()
+[
+ (n1(R), "hr")
+ (n2, "blank")
+|
+]
+=>
+[
+ (n1(R), "hr")
+ (n2, "blank")
+ (n3, "t2end")
+ (n4, "t2start")
+|
+ (e1, n1, n3, "_":"_":"S" : "_":"_":"R" : "_":"_":"S")
+ (e2, n3, n4, "_":"_":"S" : "#":"_":"L" : "_":"_":"S")
+ (e3, n4, n2, "_":"_":"S" : "$":"$":"R" : "_":"_":"S")
+]
+interface = { n1, n2 }
+
+//create the transitions to wind tape 2 to the end of it's tape contents
+wind_t2_end(a : atom)
+[
+ (n1, "t2end")
+ (n2, "alph")
+|
+ (e1, n2, n2, a #red)
+]
+=>
+[
+ (n1, "t2end")
+ (n2, "alph")
+|
+ (e1, n2, n2, a #blue)
+ (e2, n1, n1, "_":"_":"S":a:a:"R":"_":"_":"S")
+]
+interface = { n1, n2 }
+
+//create the transitions to wind tape 2 back to the start of it's tape contents on any alphabet symbol
+wind_t2_start(a : atom)
+[
+ (n1, "t2start")
+ (n2, "alph")
+|
+ (e1, n2, n2, a #blue)
+]
+=>
+[
+ (n1, "t2start")
+ (n2, "alph")
+|
+ (e1, n2, n2, a #red)
+ (e2, n1, n1, "_":"_":"S":a:"_":"L":"_":"_":"S")
+]
+interface = { n1, n2 }
+
+//create the additional rule of winding tape 2 back to the start of it's input on any blank symbol
+wind_t2_start_on_blank()
+[
+ (n1, "t2start")
+|
+]
+=>
+[
+ (n1, "t2start")
+|
+ (e1, n1, n1, "_":"_":"S":"_":"_":"L":"_":"_":"S")
+]
+interface = { n1 }
+
+//END_FOLD
+
+//FOLD === MAKE MULTITAPE ===
+//find a transition to a new state
+t3_find_transition_1(x,y : atom ; z : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+ (e1, n1, n2, z)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+ (e1, n1, n2, z #red)
+ (e2, n1, n2, z:"_":"_":"S") //add in the transition if there's no more ntm choices in the trace
+]
+interface = { n1, n2 }
+where length(z) = 3
+
+//find a looping transition
+t3_find_transition_2(x : atom ; y : list)
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, y)
+]
+=>
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, y #red)
+ (e2, n1, n1, y:"_":"_":"S") //add in the transition if there's no more ntm choices in the trace
+]
+interface = { n1 }
+where length(y) = 3
+
+//add all possible contents of tape 3 as a variant of the transition currently found to a new state
+add_t3_transitions_1(x,y : atom ; z : list ; i : int)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+|
+ (e1, n1, n2, z #red)
+ (e2, n3, n3, i)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+ (n3(R), "b" #blue)
+|
+ (e1, n1, n2, z #red)
+ (e2, n3, n3, i #red )
+ (e3, n1, n2, z:i:i:"S")
+]
+interface = { n1, n2, n3 }
+
+//add all possible contents of tape 3 as a variant of the looping transition currently found
+add_t3_transitions_2(x : atom ; y : list ; i : int)
+[
+ (n1(R), x #red)
+ (n2(R), "b" #blue)
+|
+ (e1, n1, n1, y #red)
+ (e2, n2, n2, i)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2(R), "b" #blue)
+|
+ (e1, n1, n1, y #red) 
+ (e2, n2, n2, i)
+ (e3, n1, n1, y:i:i:"S")
+]
+interface = { n1, n2 }
+where length(y) = 3
+
+//unmark all the edges on our branching node
+unmark_b(i : int)
+[
+ (n1(R), "b" #blue)
+|
+ (e1, n1, n1, i #red)
+]
+=>
+[
+ (n1(R), "b" #blue)
+|
+ (e1, n1, n1, i)
+]
+interface = { n1 }
+
+//delete the original transition to a new state
+delete_original_1(x,y : atom ; z : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+ (e1, n1, n2, z #red)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+]
+interface = { n1, n2 }
+
+//delete the original looping transition
+delete_original_2(x : atom ; y : list)
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, y #red)
+]
+=>
+[
+ (n1(R), x #red)
+|
+]
+interface = { n1 }
+
+//add the tape 1 part of a transition rule to all transitions to new state
+add_t1_transitions_1(x,y : atom ; z : list)
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+ (e1, n1, n2, z)
+]
+=>
+[
+ (n1(R), x #red)
+ (n2, y #any)
+|
+ (e1, n1, n2, "_":"_":"S":z)
+]
+interface = { n1, n2 }
+where length(z) = 6
+
+//add the tape 1 part of a transition rule to all looping transitions
+add_t1_transitions_2(x : atom ; y : list)
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, y)
+]
+=>
+[
+ (n1(R), x #red)
+|
+ (e1, n1, n1, "_":"_":"S":y)
+]
+interface = { n1 }
+where length(y) = 6
+//END_FOLD
+
+//FOLD === CLEAN-UP ===
+//delete all the edges on our alphabet node
+del_alph_edges(x : atom)
+[
+ (n1, "alph")
+|
+ (e1, n1, n1, x #any)
+]
+=>
+[
+ (n1, "alph")
+|
+]
+interface = { n1 }
+
+//delete all the edges on our branching factor node
+del_b_edges(x : int)
+[
+ (n1(R), "b")
+|
+ (e1, n1, n1, x #any)
+]
+=>
+[
+ (n1(R), "b")
+|
+]
+interface = { n1 }
+
+//delete our node and edge storing the maximum branching factor
+del_max(i : int)
+[
+ (n1(R), "max")
+|
+ (e1, n1, n1, i)
+]
+=>
+[|]
+interface = {}
+
+//delete our alphabet and branching factor nodes
+del_alph_b_nodes()
+[
+ (n1, "alph")
+ (n2(R), "b")
+|
+]
+=>
+[
+|
+]
+interface = {}
+
+//remove root status from the hr node for a clean output
+unroot_hr()
+[
+ (n1(R), "hr")
+|
+]
+=>
+[
+ (n1, "hr")
+|
+]
+interface = { n1 }
+//END_FOLD
+
+//FOLD === FORMAT ===
+//make every node grey
+make_grey(x : atom)
+[
+ (n1, x)
+|
+]
+=>
+[
+ (n1, x #grey)
+|
+]
+interface = { n1 }
+
+//make every node uncoloured
+uncolour(x : atom)
+[
+ (n1, x #any)
+|
+]
+=>
+[
+ (n1, x)
+|
+]
+interface = { n1 }
+
+//uncolour the final state, but make with a looping empty green edge
+uncolour_final_states(x : atom)
+[
+ (n1, x #green)
+|
+]
+=>
+[
+ (n1, x)
+|
+ (e1, n1, n1, empty #green)
+]
+interface = { n1 }
+
+//find the final state, represented by the looping green edge, removing the edge and make the node green again
+colour_final_state(x : atom)
+[
+ (n1, x)
+|
+ (e1, n1, n1, empty #green)
+]
+=>
+[
+ (n1, x #green)
+|
+]
+interface = { n1 }
+//END_FOLD
