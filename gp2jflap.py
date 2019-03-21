@@ -37,7 +37,7 @@ edges = text[1]
 text = ""
 #write header
 text += """<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!--Created for JFLAP 6.4. with gp2jflap.py--><structure>
+<!--Created for JFLAP 5.0. with gp2jflap.py--><structure>
 \t<type>turing</type>
 \t<tapes>1</tapes>
 \t<automaton>"""
