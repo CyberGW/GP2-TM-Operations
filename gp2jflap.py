@@ -31,6 +31,9 @@ for i in range(0,2):
 nodes = text[0]
 edges = text[1]
 
+#close input file
+gp2.close()
+
 #==================================================
 # CREATE OUTPUT
 #==================================================
