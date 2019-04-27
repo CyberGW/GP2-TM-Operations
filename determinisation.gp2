@@ -15,7 +15,7 @@ Make_Complete = (mark_existing_edges ; try mark_alph ; del_symbol)! ; add_edge! 
 
 Perform_Labelling = Find_Transition;Update_B;({label_new_state_transitions, label_loop_transitions} ; Update_B)!;label_transition_reset
 Update_B = if b_exists then skip else update_b
-Find_Transition = try {find_transition_1, find_transition_2, find_transition_3, find_transition_4}
+Find_Transition = {find_transition_1, find_transition_2, find_transition_3, find_transition_4}
 
 Add_Tape_3 = {t3_find_transition_1, t3_find_transition_2} ; {add_t3_transitions_1, add_t3_transitions_2}! ; unmark_b! ; {delete_original_1 , delete_original_2}
 Add_Tape_1 = {add_t1_transitions_1, add_t1_transitions_2}
